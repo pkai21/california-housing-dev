@@ -41,7 +41,7 @@ jobs:
 
       - name: Train model
         run: |
-          python src/train.py
+          python -m src.train
 
       - name: Verify model
         run: |
