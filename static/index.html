@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dự đoán giá nhà California</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    h1 { font-size: 1.4rem; }
+    form { display: grid; gap: .8rem; }
+    label { display: grid; gap: .2rem; font-size: .9rem; }
+    label small { color: #666; }
+    input { padding: .5rem; font-size: 1rem; border: 1px solid #bbb; border-radius: 6px; }
+    button { padding: .7rem; font-size: 1rem; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    #result { margin-top: 1.2rem; padding: 1rem; border-radius: 8px; background: #f1f5f9; display: none; }
+    #price { font-size: 1.8rem; font-weight: 700; }
+    #result.error { background: #fee2e2; }
+  </style>
+</head>
+<body>
+  <h1>Dự đoán giá nhà trung vị ở California</h1>
+  <form id="form"></form>
+  <div id="result"><div id="price"></div><div id="note"></div></div>
+
+  <script>
+    // Thứ tự khớp FEATURE_NAMES ở backend (backend nhận theo tên nên đổi thứ tự hiển thị cũng không sao)
+    const FIELDS = [
+      { name: "MedInc",     label: "Thu nhập trung vị",      hint: "đơn vị 10.000 USD, ví dụ 3.5 = 35.000 USD", value: 3.5,  step: 0.1 },
+      { name: "HouseAge",   label: "Tuổi nhà trung vị",      hint: "năm",                                       value: 29,   step: 1 },
+      { name: "AveRooms",   label: "Số phòng trung bình",    hint: "mỗi hộ",                                    value: 5.4,  step: 0.1 },
+      { name: "AveBedrms",  label: "Số phòng ngủ trung bình", hint: "mỗi hộ",                                   value: 1.1,  step: 0.1 },
+      { name: "Population", label: "Dân số của khu",         hint: "người",                                     value: 1166, step: 1 },
+      { name: "AveOccup",   label: "Số người trung bình",    hint: "mỗi hộ",                                    value: 2.8,  step: 0.1 },
+      { name: "Latitude",   label: "Vĩ độ",                  hint: "32 đến 42, ví dụ Los Angeles ≈ 34.05",      value: 34.2, step: 0.01 },
+      { name: "Longitude",  label: "Kinh độ",                hint: "-125 đến -114, ví dụ Los Angeles ≈ -118.24", value: -118.5, step: 0.01 },
+    ];
+
+    const form = document.getElementById("form");
+    const result = document.getElementById("result");
+    const priceEl = document.getElementById("price");
+    const noteEl = document.getElementById("note");
+
+    // Dựng form bằng DOM API (không dùng innerHTML) để tránh chèn mã độc
+    for (const f of FIELDS) {
+      const label = document.createElement("label");
+      label.append(f.label + " ");
+      const small = document.createElement("small");
+      small.textContent = "(" + f.hint + ")";
+      label.append(small);
+      const input = document.createElement("input");
+      Object.assign(input, { type: "number", name: f.name, value: f.value, step: f.step, required: true });
+      label.append(input);
+      form.append(label);
+    }
+    const button = document.createElement("button");
+    button.type = "submit";
+    button.textContent = "Dự đoán giá";
+    form.append(button);
+
+    function show(text, note, isError) {
+      priceEl.textContent = text;
+      noteEl.textContent = note;
+      result.className = isError ? "error" : "";
+      result.style.display = "block";
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const body = {};
+      for (const f of FIELDS) body[f.name] = parseFloat(form.elements[f.name].value);
+
+      button.disabled = true;
+      try {
+        const res = await fetch("/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          // 422: lỗi kiểm tra đầu vào, hiện trường nào sai
+          const detail = Array.isArray(data.detail)
+            ? data.detail.map(d => d.loc.slice(-1)[0] + ": " + d.msg).join("; ")
+            : "Lỗi không xác định";
+          show("Dữ liệu chưa hợp lệ", detail, true);
+          return;
+        }
+        const usd = data.price_usd.toLocaleString("en-US");
+        show("$" + usd, data.capped
+          ? "Chạm trần 500.000 USD của dữ liệu huấn luyện, giá thật có thể cao hơn."
+          : "Giá nhà trung vị ước tính của khu này.", false);
+      } catch (err) {
+        show("Không kết nối được API", String(err), true);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
